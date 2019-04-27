@@ -219,10 +219,9 @@ print("hardwarekey:",dev.hardwareKey)
 
 
 def scalewheel(ev):
-    print("handling event type {}, x {}, y {} widget {}".format(ev.type,ev.x,ev.y,ev.widget.__class__))
+    #print("handling event type {}, x {}, y {} widget {}".format(ev.type,ev.x,ev.y,ev.widget.__class__))
     w=ev.widget
     if isinstance(w, Scale):
-        print("doing stuff")
         d=0
         if int(ev.type)==38: d=ev.delta/abs(ev.delta)
         if int(ev.type)==4 and ev.num==4: d=1
