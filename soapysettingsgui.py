@@ -49,7 +49,6 @@ import sys;
 # - rx settings: a collection of widgets, could be different type of widgets
 # - all of the above for tx
 
-
 class ChannelSettingBase(object):
     def __init__(self,ch,name):
         self.ch=ch
@@ -219,8 +218,21 @@ print("hardwarekey:",dev.hardwareKey)
 #for freqRange in freqs: print(freqRange)
 
 
+def scalewheel(ev):
+    print("handling event type {}, x {}, y {} widget {}".format(ev.type,ev.x,ev.y,ev.widget.__class__))
+    w=ev.widget
+    if isinstance(w, Scale):
+        print("doing stuff")
+        d=0
+        if int(ev.type)==38: d=ev.delta/abs(ev.delta)
+        if int(ev.type)==4 and ev.num==4: d=1
+        if int(ev.type)==4 and ev.num==5: d=-1
+        w.set(w.get()+d)
 
 root = Tk()
+root.bind("<Button-4>",scalewheel)
+root.bind("<Button-5>",scalewheel)
+root.bind("<MouseWheel>",scalewheel)
 app = App(root)
 
 root.mainloop()
