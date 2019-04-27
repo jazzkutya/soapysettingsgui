@@ -6,7 +6,8 @@ from __future__ import print_function;
 from Tkinter import *
 import SoapySDR
 from SoapySDR import *
-import sys;
+import sys
+import gc
 
 # things we want to set for each channel:
 # - Gain
@@ -62,6 +63,9 @@ class ChannelSettingBase(object):
     def set(self,value):
         self.value=value
     def __str__(self): return "ChannelSettingBase %s" % self.name
+    def destroy(self):
+        self.ch=None
+        self.w=None
 
 class Gain(ChannelSettingBase):
     def __init__(self,ch,name):
@@ -82,7 +86,7 @@ class Gain(ChannelSettingBase):
         self.ch.dev.setGain(self.ch.d,self.ch.ci,self.name,float(gain))
     def __str__(self): return "gain %s(%.1f-%.1f step %.1f): %.1f" % (self.name,self.gmin,self.gmax,self.step,self.value)
     def makeWidget(self,master):
-        self.w=Scale(master, from_=self.gmin, to=self.gmax, label=self.name, command=self.set)
+        self.w=Scale(master, from_=self.gmin, to=self.gmax, label=self.name, command=app.soapywrapper(self.set))
         self.w.set(self.value)
         return self.w
     @staticmethod
@@ -109,9 +113,9 @@ class Channel(object):
         Gain.discover(self)
     def setAgc(self,on): self.dev.setGainMode(self.d,self.ci,bool(on))
     def getAgc(self): return dev.getGainMode(self.d,self.ci)
-    def getD(self): return self.d
-    def getDT(self): return self.dt
-    def getCI(self): return self.ci
+    def getD(self): return self.d   # direction
+    def getDT(self): return self.dt # direction as text
+    def getCI(self): return self.ci # channel index
     def getDev(self): return self.dev
     def __str__(self): return self.dt+str(self.ci)
     @staticmethod
@@ -125,7 +129,11 @@ class Channel(object):
                 channels.append(channel)
                 dt=channel.getDT()
                 channelsbyname[dt+str(ci)]=channel
-
+    def destroy(self):
+        if self.gains:
+            for g in self.gains:
+                g.destroy()
+        self.dev=None
 
 
 class MyDevice(object):
@@ -133,7 +141,7 @@ class MyDevice(object):
         return getattr(self.dev,name)
     def __new__(cls, *args, **kwargs):
         self=object.__new__(cls)
-        self.dev=SoapySDR.Device.__new__(SoapySDR.Device,*args,**kwargs)
+        object.__setattr__(self,'dev',SoapySDR.Device.__new__(SoapySDR.Device,*args,**kwargs))
         return self
     def __init__(self,devspec):
         #super(MyDevice,self).__init__()
@@ -141,47 +149,84 @@ class MyDevice(object):
         self.devspec=devspec
         self.driverKey=self.getDriverKey()
         self.hardwareKey=self.getHardwareKey()
+    def discover(self):
         Channel.discover(self)
         print(self.channels)
-    #def __del__(self):
-    #    return self.dev.__del__()
+    def destroy(self):
+        self.channelsbyname=None
+        if self.channels:
+            for c in self.channels:
+                c.destroy()
+
+    def __del__(self):
+        print("MyDevice is being destructed")
+        try: object.__getattribute__(self,'dev').__del__
+        except AttributeError: pass
+        #return object.__del__()
 
 class App:
     
     def __init__(self,master):
+        self.timer=None
         frame=Frame(master)
         frame.pack(fill=X)
         self.qbutt=Button(frame,text="X",command=frame.quit)
         self.qbutt.pack(side=RIGHT)
-        self.somebutt=Button(frame,text="butt",command=self.saysomething)
-        self.somebutt.pack(side=LEFT)
-        contentframe=Frame(master)
-        contentframe.pack(fill=BOTH, expand=1)
+        self.rcbutt=Button(frame,text="connect",command=self.buildSDRgui,state=DISABLED)
+        self.rcbutt.pack(side=LEFT)
+        self.contentframe=Frame(master)
+        self.contentframe.pack(fill=BOTH, expand=1)
+    def buildSDRgui(self):
+        self.dev=MyDevice("driver=remote,remote=localhost")
+        self.rcbutt.config(state=DISABLED)
+        print("driverkey:",self.dev.driverKey)
+        print("hardwarekey:",self.dev.hardwareKey)
+        self.dev.discover()
+        contentframe=self.contentframe
         tf=contentframe
         objs2update=[]
-        for ch in dev.channels:
+        for ch in self.dev.channels:
             Label(tf,text=("Channel %s" % ch)).pack(fill=X)
             for g in ch.gains:
                 w=g.makeWidget(tf)
                 w.pack(fill=X)
                 w.config(orient=HORIZONTAL)
                 objs2update.append(g)
+        self=self
         def tick():
+            self.timer=None
             #print("tick!")
-            for o in objs2update:
-                o.update()
-            root.after(500,tick)
-        root.after(5000,tick)
+            for o in objs2update: o.update()
+            self.timer=root.after(500,self.tickcb)
+        self.tickcb=self.soapywrapper(tick)
+        self.timer=root.after(5000,self.tickcb)
 
+    def destroySDRgui(self):
+        if self.timer: root.after_cancel(self.timer)
+        self.timer=None
+        self.dev.destroy()
+        del(self.dev)
+        self.dev=None
+        for w in self.contentframe.winfo_children(): w.destroy()
+        gc.collect()
+        self.rcbutt.config(state=NORMAL)
 
     def saysomething(self):
         print("puncifánk")
+    def soapywrapper(self,call):
+        self=self
+        call=call
+        def f(*args, **kwargs):
+            try:
+                call(*args,**kwargs)
+            except RuntimeError as e:
+                errmsg=str(e)
+                print("Exception: ",errmsg)
+                if 'Soapy' in errmsg:
+                    self.destroySDRgui()
+                else: raise
+        return f
 
-dev=MyDevice("")
-#print(type(dev))
-print("driverkey:",dev.driverKey)
-print("hardwarekey:",dev.hardwareKey)
-#print("hardwarekey:",dev.getHardwareKey())
 
 # - - ArgInfoList getSettingInfo() 
 # - - 
@@ -229,10 +274,15 @@ def scalewheel(ev):
         w.set(w.get()+d)
 
 root = Tk()
+app = App(root)
+app.buildSDRgui()
+#print(type(dev))
+#print("hardwarekey:",dev.getHardwareKey())
+
+
 root.bind("<Button-4>",scalewheel)
 root.bind("<Button-5>",scalewheel)
 root.bind("<MouseWheel>",scalewheel)
-app = App(root)
 
 root.mainloop()
 root.destroy()
