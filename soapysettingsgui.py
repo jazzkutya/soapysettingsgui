@@ -1,9 +1,8 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # -*- coding: utf8 -*-
 # vim:fileencoding=utf8
 
-from __future__ import print_function;
-from Tkinter import *
+from tkinter import *
 import SoapySDR
 from SoapySDR import *
 import sys
