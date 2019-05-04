@@ -58,7 +58,7 @@ import gc
 # called on a MyDevice instance to get rid of the reference in the class.
 # Objects providing a widget still need to have destroy called on them to get
 # rid of the widget object
-# these are colloected in objs2upate in the App instance
+# these are collected in objs2upate in the App instance
 class DevAccess:
     def __init__(self,dev):
         self.dev_id=id(dev)
@@ -75,7 +75,6 @@ class ChannelSettingBase(DevAccess):
         self.ci=ch.getCI()
         self.w=None
         self.value=None
-        #self.update()
     def update(self):
         if self.w: self.w.set(self.value)
         return self.value
@@ -83,7 +82,6 @@ class ChannelSettingBase(DevAccess):
         self.value=value
     def __str__(self): return "ChannelSettingBase %s" % self.name
     def destroy(self):
-        #self.ch=None
         self.w=None
 
 class Gain(ChannelSettingBase):
@@ -120,7 +118,6 @@ class Gain(ChannelSettingBase):
 class Channel(DevAccess):
     def __init__(self,dev,d,ci):
         super().__init__(dev)
-        #self.dev=dev
         self.d=d
         self.ci=ci
         self.dt = 'RX' if d==SOAPY_SDR_RX else 'TX'
@@ -148,11 +145,6 @@ class Channel(DevAccess):
                 dt=channel.getDT()
                 channelsbyname[dt+str(ci)]=channel
     def destroy(self): pass
-        #if self.gains:
-        #    for g in self.gains:
-        #        g.destroy()
-        #self.dev=None
-
 
 class MyDevice(object):
     mydevs={}
@@ -167,7 +159,7 @@ class MyDevice(object):
         return self
     def __init__(self,devspec):
         MyDevice.mydevs[id(self)]=self
-        #super(MyDevice,self).__init__()
+        #super(MyDevice,self).__init__() # stupid things throws an error instead of a simple pass
         dev=self.dev
         self.devspec=devspec
         self.driverKey=self.getDriverKey()
@@ -177,18 +169,15 @@ class MyDevice(object):
         print(self.channels)
     def destroy(self):
         dev_id=id(self)
+        self.channelsbyname=None
+        self.channels=None
         if dev_id in MyDevice.mydevs: del MyDevice.mydevs[id(self)]
-        #self.channelsbyname=None
-        #if self.channels:
-        #    for c in self.channels:
-        #        c.destroy()
 
     def __del__(self):
         print("MyDevice is being destructed")
         self.destroy()
         try: object.__getattribute__(self,'dev').__del__
         except AttributeError: pass
-        #return object.__del__()
 
 class App:
     
