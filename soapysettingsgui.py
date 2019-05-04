@@ -171,6 +171,7 @@ class MyDevice(object):
         dev_id=id(self)
         self.channelsbyname=None
         self.channels=None
+        self.dev.close()
         if dev_id in self.mydevs: del self.mydevs[id(self)]
 
     def __del__(self):
