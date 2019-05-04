@@ -49,10 +49,30 @@ import gc
 # - rx settings: a collection of widgets, could be different type of widgets
 # - all of the above for tx
 
-class ChannelSettingBase(object):
+# I removed all parent references toward MyDevice so MyDevice can be
+# garbage collected by reference counting.
+# Every object that is part of a MyDevice and that needs access to MyDevice
+# must inherit from DevAccess, which provides the mechanism for this access.
+# The mechanism does not use refs to allow freeing of MyDevice instances,
+# but MyDevice class now keeps track of all instances, so destroy() must be
+# called on a MyDevice instance to get rid of the reference in the class.
+# Objects providing a widget still need to have destroy called on them to get
+# rid of the widget object
+# these are colloected in objs2upate in the App instance
+class DevAccess:
+    def __init__(self,dev):
+        self.dev_id=id(dev)
+
+    def __getattr__(self,name):
+        if name=="dev": return MyDevice.get_dev_by_id(self.dev_id)
+        return super().__getattr__(name)
+
+class ChannelSettingBase(DevAccess):
     def __init__(self,ch,name):
-        self.ch=ch
+        super().__init__(ch.dev)
         self.name=name
+        self.d=ch.getD()
+        self.ci=ch.getCI()
         self.w=None
         self.value=None
         #self.update()
@@ -63,26 +83,24 @@ class ChannelSettingBase(object):
         self.value=value
     def __str__(self): return "ChannelSettingBase %s" % self.name
     def destroy(self):
-        self.ch=None
+        #self.ch=None
         self.w=None
 
 class Gain(ChannelSettingBase):
     def __init__(self,ch,name):
-        super(Gain,self).__init__(ch,name)
-        d=ch.getD()
-        ci=ch.getCI()
-        grange=ch.dev.getGainRange(d,ci,name)
+        super().__init__(ch,name)
+        grange=self.dev.getGainRange(self.d,self.ci,name)
         self.gmax=grange.maximum()
         self.gmin=grange.minimum()
         self.step=grange.step()
         self.update()
         print(self)
     def update(self):
-        self.value=self.ch.dev.getGain(self.ch.d,self.ch.ci,self.name)
-        return super(Gain,self).update()
+        self.value=self.dev.getGain(self.d,self.ci,self.name)
+        return super().update()
     def set(self,gain):
-        super(Gain,self).set(gain)
-        self.ch.dev.setGain(self.ch.d,self.ch.ci,self.name,float(gain))
+        self.dev.setGain(self.d,self.ci,self.name,float(gain))
+        self.update()
     def __str__(self): return "gain %s(%.1f-%.1f step %.1f): %.1f" % (self.name,self.gmin,self.gmax,self.step,self.value)
     def makeWidget(self,master):
         self.w=Scale(master, from_=self.gmin, to=self.gmax, label=self.name, command=app.soapywrapper(self.set))
@@ -99,9 +117,10 @@ class Gain(ChannelSettingBase):
             gain=Gain(ch,name)
             gains.append(gain)
 
-class Channel(object):
+class Channel(DevAccess):
     def __init__(self,dev,d,ci):
-        self.dev=dev
+        super().__init__(dev)
+        #self.dev=dev
         self.d=d
         self.ci=ci
         self.dt = 'RX' if d==SOAPY_SDR_RX else 'TX'
@@ -111,7 +130,7 @@ class Channel(object):
         self.hasAgc=dev.hasGainMode(d,ci)
         Gain.discover(self)
     def setAgc(self,on): self.dev.setGainMode(self.d,self.ci,bool(on))
-    def getAgc(self): return dev.getGainMode(self.d,self.ci)
+    def getAgc(self): return self.dev.getGainMode(self.d,self.ci)
     def getD(self): return self.d   # direction
     def getDT(self): return self.dt # direction as text
     def getCI(self): return self.ci # channel index
@@ -128,14 +147,18 @@ class Channel(object):
                 channels.append(channel)
                 dt=channel.getDT()
                 channelsbyname[dt+str(ci)]=channel
-    def destroy(self):
-        if self.gains:
-            for g in self.gains:
-                g.destroy()
-        self.dev=None
+    def destroy(self): pass
+        #if self.gains:
+        #    for g in self.gains:
+        #        g.destroy()
+        #self.dev=None
 
 
 class MyDevice(object):
+    mydevs={}
+    @staticmethod
+    def get_dev_by_id(dev_id):
+        return MyDevice.mydevs[dev_id]
     def __getattr__(self,name):
         return getattr(self.dev,name)
     def __new__(cls, *args, **kwargs):
@@ -143,6 +166,7 @@ class MyDevice(object):
         object.__setattr__(self,'dev',SoapySDR.Device.__new__(SoapySDR.Device,*args,**kwargs))
         return self
     def __init__(self,devspec):
+        MyDevice.mydevs[id(self)]=self
         #super(MyDevice,self).__init__()
         dev=self.dev
         self.devspec=devspec
@@ -152,13 +176,16 @@ class MyDevice(object):
         Channel.discover(self)
         print(self.channels)
     def destroy(self):
-        self.channelsbyname=None
-        if self.channels:
-            for c in self.channels:
-                c.destroy()
+        dev_id=id(self)
+        if dev_id in MyDevice.mydevs: del MyDevice.mydevs[id(self)]
+        #self.channelsbyname=None
+        #if self.channels:
+        #    for c in self.channels:
+        #        c.destroy()
 
     def __del__(self):
         print("MyDevice is being destructed")
+        self.destroy()
         try: object.__getattribute__(self,'dev').__del__
         except AttributeError: pass
         #return object.__del__()
@@ -175,6 +202,7 @@ class App:
         self.rcbutt.pack(side=LEFT)
         self.contentframe=Frame(master)
         self.contentframe.pack(fill=BOTH, expand=1)
+        self.objs2update=[]
     def buildSDRgui(self):
         self.dev=MyDevice("driver=remote,remote=localhost")
         self.rcbutt.config(state=DISABLED)
@@ -183,7 +211,7 @@ class App:
         self.dev.discover()
         contentframe=self.contentframe
         tf=contentframe
-        objs2update=[]
+        objs2update=self.objs2update=[]
         for ch in self.dev.channels:
             Label(tf,text=("Channel %s" % ch)).pack(fill=X)
             for g in ch.gains:
@@ -206,6 +234,8 @@ class App:
         self.dev.destroy()
         del(self.dev)
         self.dev=None
+        for o in self.objs2update: o.destroy()
+        self.objs2update=[]
         for w in self.contentframe.winfo_children(): w.destroy()
         gc.collect()
         self.rcbutt.config(state=NORMAL)
