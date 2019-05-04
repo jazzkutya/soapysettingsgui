@@ -158,8 +158,8 @@ class MyDevice(object):
         object.__setattr__(self,'dev',SoapySDR.Device.__new__(SoapySDR.Device,*args,**kwargs))
         return self
     def __init__(self,devspec):
-        MyDevice.mydevs[id(self)]=self
-        #super(MyDevice,self).__init__() # stupid things throws an error instead of a simple pass
+        self.mydevs[id(self)]=self
+        super().__init__()
         dev=self.dev
         self.devspec=devspec
         self.driverKey=self.getDriverKey()
@@ -171,7 +171,7 @@ class MyDevice(object):
         dev_id=id(self)
         self.channelsbyname=None
         self.channels=None
-        if dev_id in MyDevice.mydevs: del MyDevice.mydevs[id(self)]
+        if dev_id in self.mydevs: del self.mydevs[id(self)]
 
     def __del__(self):
         print("MyDevice is being destructed")
