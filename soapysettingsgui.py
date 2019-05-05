@@ -85,6 +85,54 @@ class ChannelSettingBase(DevAccess):
         self.w=None
         self.cv=None
 
+class Bandwidth(ChannelSettingBase):
+    def __init__(self,ch):
+        super().__init__(ch,"Bandwidth")
+        self.chname=str(ch)
+        self.bwmin,self.bwmax=None,None
+        self.values=None
+        ranges=self.dev.getBandwidthRange(self.d,self.ci)
+        self.valid=True
+        if len(ranges)>1:
+            self.values=[]
+            for r in ranges:
+                if r.minimum()!=r.maximum(): print("This device has a very complicated bandwidth setting!")
+                self.values.append((r.minimum()+r.maximum())/2)
+        elif len(ranges)==1:
+            self.bwmin=ranges[0].minimum()
+            self.bwmax=ranges[0].maximum()
+        else: self.valid=False
+        if self.valid: self.update()
+        print(self)
+    def update(self):
+        self.value=self.dev.getBandwidth(self.d,self.ci)
+        if self.cv: self.cv.set(self.value)
+        if self.bwmin and self.w: self.w.set(self.value)
+        return self.value
+    def set(self,*args):
+        if self.bwmin: self.dev.setBandiwdth(self.d,self.ci,float(args[0]))
+        else:
+            if float(self.cv.get())!=self.value:
+                #print("setting bandwidth because",self.cv.get(),"!=",self.value)
+                #print("setting bandwidth to",float(self.cv.get()))
+                self.dev.setBandwidth(self.d,self.ci,float(self.cv.get()))
+        self.update()
+    def __str__(self): return "channel %s bandwidth" % (self.chname)
+    def makeWidget(self,master):
+        if self.bwmin:
+            self.w=tk.Scale(master, from_=self.bwmin, to=self.bwmax, command=app.soapywrapper(self.set))
+            self.w.set(self.value)
+        else:
+            cv=self.cv=tk.StringVar()
+            cv.set(self.value)
+            cv.trace("w",app.soapywrapper(self.set))
+            self.w=tk.OptionMenu(master, cv, *self.values)
+        return self.w
+    @staticmethod
+    def discover(ch):
+        ch.bandwidth=Bandwidth(ch)
+        if not ch.bandwidth.valid: ch.bandwidth=None
+
 class Antenna(ChannelSettingBase):
     def __init__(self,ch):
         super().__init__(ch,"Antenna")
@@ -185,6 +233,7 @@ class Channel(DevAccess):
         Gain.discover(self)
         Antenna.discover(self)
         AGC.discover(self)
+        Bandwidth.discover(self)
     def getD(self): return self.d   # direction
     def getDT(self): return self.dt # direction as text
     def getCI(self): return self.ci # channel index
@@ -267,7 +316,7 @@ class App:
         for ch in self.dev.channels:
             tk.Label(tf,text=("channel %s" % ch)).grid(column=1+chcnt,row=0)
             rowcnt=1
-            for o in ch.antenna,ch.agc:
+            for o in ch.antenna,ch.agc,ch.bandwidth:
                 if o:
                     frame=tk.Frame(tf)
                     tk.Label(frame,text=o.name).grid(column=0)
@@ -302,7 +351,7 @@ class App:
         self.objs2update=[]
         for w in self.contentframe.winfo_children(): w.destroy()
         gc.collect()
-        self.rcbutt.config(state=NORMAL)
+        self.rcbutt.config(state=tk.NORMAL)
 
     def soapywrapper(self,call):
         self=self
