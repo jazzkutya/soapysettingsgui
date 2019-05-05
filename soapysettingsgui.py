@@ -2,7 +2,7 @@
 # -*- coding: utf8 -*-
 # vim:fileencoding=utf8
 
-from tkinter import *
+import tkinter as tk
 import SoapySDR
 from SoapySDR import *
 import sys
@@ -38,6 +38,8 @@ import gc
 # - - template <typename Type> writeSetting(string key, Type value)
 # - - string readSetting(string key)
 # - - template <typename Type> Type readSetting(string key)
+# - - ArgInfoList getSettingInfo() 
+# - - 
 
 # Device
 #  - has settings
@@ -65,7 +67,7 @@ class DevAccess:
 
     def __getattr__(self,name):
         if name=="dev": return MyDevice.get_dev_by_id(self.dev_id)
-        return super().__getattr__(name)
+        raise AttributeError(name)
 
 class ChannelSettingBase(DevAccess):
     def __init__(self,ch,name=None):
@@ -88,11 +90,11 @@ class Antenna(ChannelSettingBase):
         super().__init__(ch,"Antenna")
         self.chname=str(ch)
         self.values=self.dev.listAntennas(self.d,self.ci)
-        self.update()
+        if self.values and len(self.values)>0: self.update()
         print(self)
     def update(self):
         self.value=self.dev.getAntenna(self.d,self.ci)
-        print("setting value to ",self.value)
+        #print("setting antenna value to",self.value)
         if self.cv: self.cv.set(self.value)
         return self.value
     def set(self,*args):
@@ -101,13 +103,41 @@ class Antenna(ChannelSettingBase):
             self.update()
     def __str__(self): return "channel %s antenna" % (self.chname)
     def makeWidget(self,master):
-        cv=self.cv=StringVar()
+        cv=self.cv=tk.StringVar()
         cv.set(self.value)
         cv.trace("w",app.soapywrapper(self.set))
-        self.w=OptionMenu(master, cv, *self.values)
+        self.w=tk.OptionMenu(master, cv, *self.values)
         return self.w
     @staticmethod
-    def discover(ch): ch.antenna=Antenna(ch)
+    def discover(ch):
+        ch.antenna=Antenna(ch)
+        if (not(ch.antenna.values) or len(ch.antenna.values)<1): ch.antenna=None
+
+class AGC(ChannelSettingBase):
+    def __init__(self,ch):
+        super().__init__(ch,"AGC")
+        self.chname=str(ch)
+        self.valid=self.dev.hasGainMode(self.d,self.ci)
+        if self.valid: self.update()
+    def update(self):
+        self.value=self.dev.getGainMode(self.d,self.ci)
+        if self.cv: self.cv.set(self.value)
+        return self.value
+    def set(self,*args):
+        if self.cv.get()!=self.value:
+            self.dev.setGainMode(self.d,self.ci,bool(self.cv.get()))
+            self.update()
+    def __str__(self): return "channel %s AGC" % (self.chname)
+    def makeWidget(self,master):
+        cv=self.cv=tk.IntVar()
+        cv.set(self.value)
+        cv.trace("w",app.soapywrapper(self.set))
+        self.w=tk.Checkbutton(master, variable=cv)
+        return self.w
+    @staticmethod
+    def discover(ch):
+        ch.agc=AGC(ch)
+        if not ch.agc.valid: ch.agc=None
 
 class Gain(ChannelSettingBase):
     def __init__(self,ch,name):
@@ -127,7 +157,7 @@ class Gain(ChannelSettingBase):
         self.update()
     def __str__(self): return "gain %s(%.1f-%.1f step %.1f): %.1f" % (self.name,self.gmin,self.gmax,self.step,self.value)
     def makeWidget(self,master):
-        self.w=Scale(master, from_=self.gmin, to=self.gmax, label=self.name, command=app.soapywrapper(self.set))
+        self.w=tk.Scale(master, from_=self.gmin, to=self.gmax, label=self.name, command=app.soapywrapper(self.set))
         self.w.set(self.value)
         return self.w
     @staticmethod
@@ -154,8 +184,7 @@ class Channel(DevAccess):
         self.hasAgc=dev.hasGainMode(d,ci)
         Gain.discover(self)
         Antenna.discover(self)
-    def setAgc(self,on): self.dev.setGainMode(self.d,self.ci,bool(on))
-    def getAgc(self): return self.dev.getGainMode(self.d,self.ci)
+        AGC.discover(self)
     def getD(self): return self.d   # direction
     def getDT(self): return self.dt # direction as text
     def getCI(self): return self.ci # channel index
@@ -214,40 +243,50 @@ class App:
     
     def __init__(self,master):
         self.timer=None
-        frame=Frame(master)
-        frame.pack(fill=X)
-        self.qbutt=Button(frame,text="X",command=frame.quit)
-        self.qbutt.pack(side=RIGHT)
-        self.rcbutt=Button(frame,text="connect",command=self.buildSDRgui,state=DISABLED)
-        self.rcbutt.pack(side=LEFT)
-        self.contentframe=Frame(master)
-        self.contentframe.pack(fill=BOTH, expand=1)
+        frame=tk.Frame(master,borderwidth=2,relief=tk.RIDGE)
+        frame.grid(sticky=tk.W+tk.E)
+        self.rcbutt=tk.Button(frame,text="connect",command=self.buildSDRgui,state=tk.DISABLED)
+        self.rcbutt.grid(row=0,sticky=tk.W)
+        #Label(frame,text="STUFF").grid(column=1,row=0)
+        self.qbutt=tk.Button(frame,text="X",command=frame.quit)
+        self.qbutt.grid(column=10,row=0,sticky=tk.W+tk.E)
+        self.contentframe=tk.Frame(master)
+        self.contentframe.grid(row=1,sticky=tk.N+tk.E+tk.W+tk.S)
         self.objs2update=[]
     def buildSDRgui(self):
         self.dev=MyDevice("driver=remote,remote=localhost")
-        self.rcbutt.config(state=DISABLED)
+        self.rcbutt.config(state=tk.DISABLED)
         print("driverkey:",self.dev.driverKey)
         print("hardwarekey:",self.dev.hardwareKey)
         self.dev.discover()
         contentframe=self.contentframe
         tf=contentframe
+        tk.Label(tf,text="device").grid(column=0,row=0)
         objs2update=self.objs2update=[]
+        chcnt=0
         for ch in self.dev.channels:
-            Label(tf,text=("channel %s" % ch)).pack(fill=X)
-            for o in ch.antenna,:
-                Label(tf,text=o.name).pack(fill=X)
-                w=o.makeWidget(tf)
-                w.pack(fill=X)
-                objs2update.append(o)
+            tk.Label(tf,text=("channel %s" % ch)).grid(column=1+chcnt,row=0)
+            rowcnt=1
+            for o in ch.antenna,ch.agc:
+                if o:
+                    frame=tk.Frame(tf)
+                    tk.Label(frame,text=o.name).grid(column=0)
+                    w=o.makeWidget(frame)
+                    w.grid(column=1,row=0,sticky=tk.W)
+                    objs2update.append(o)
+                    frame.grid(column=1+chcnt,row=rowcnt,sticky=tk.W+tk.E)
+                    rowcnt=rowcnt+1
             for g in ch.gains:
                 w=g.makeWidget(tf)
-                w.pack(fill=X)
-                w.config(orient=HORIZONTAL)
+                w.config(orient=tk.HORIZONTAL)
+                w.grid(column=1+chcnt,row=rowcnt,sticky=tk.W+tk.E)
                 objs2update.append(g)
+                rowcnt=rowcnt+1
+            chcnt=chcnt+1
         self=self
         def tick():
             self.timer=None
-            print("tick!")
+            #print("tick!")
             for o in objs2update: o.update()
             self.timer=root.after(500,self.tickcb)
         self.tickcb=self.soapywrapper(tick)
@@ -265,8 +304,6 @@ class App:
         gc.collect()
         self.rcbutt.config(state=NORMAL)
 
-    def saysomething(self):
-        print("puncifánk")
     def soapywrapper(self,call):
         self=self
         call=call
@@ -282,8 +319,6 @@ class App:
         return f
 
 
-# - - ArgInfoList getSettingInfo() 
-# - - 
 # - Antenna TODO
 # - - name
 # - - setAntenna(name) / getAntenna() returns string
@@ -320,14 +355,14 @@ class App:
 def scalewheel(ev):
     #print("handling event type {}, x {}, y {} widget {}".format(ev.type,ev.x,ev.y,ev.widget.__class__))
     w=ev.widget
-    if isinstance(w, Scale):
+    if isinstance(w, tk.Scale):
         d=0
         if int(ev.type)==38: d=ev.delta/abs(ev.delta)
         if int(ev.type)==4 and ev.num==4: d=1
         if int(ev.type)==4 and ev.num==5: d=-1
         w.set(w.get()+d)
 
-root = Tk()
+root = tk.Tk()
 app = App(root)
 app.buildSDRgui()
 #print(type(dev))
