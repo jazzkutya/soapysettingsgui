@@ -104,7 +104,9 @@ class DeviceSetting(DevAccess):
             else: print("float without range unsupported")
         elif self.type==SoapySDR.ArgInfo.STRING:
             if arginfo.options:
-                self.values = arginfo.options
+                self.values = list(arginfo.options)
+                print("options:")
+                for v in self.values: print(v)
                 self.getter=self.dev.readSetting
                 self.valid=True
             else: print("string without option list unsupported")
@@ -121,14 +123,14 @@ class DeviceSetting(DevAccess):
     def set(self,*args):
         if self.type==SoapySDR.ArgInfo.BOOL:
             if int(self.cv.get())!=int(self.value):
-                self.dev.writeSetting(bool(self.cv.get()))
+                self.dev.writeSetting(self.key,bool(self.cv.get()))
         elif self.type==SoapySDR.ArgInfo.INT:
-            self.dev.writeSetting(self.d,self.ci,int(args[0]))
+            self.dev.writeSetting(self.key,int(args[0]))
         elif self.type==SoapySDR.ArgInfo.FLOAT:
-            self.dev.writeSetting(self.d,self.ci,float(args[0]))
+            self.dev.writeSetting(self.key,float(args[0]))
         elif self.type==SoapySDR.ArgInfo.STRING:
             if self.cv.get()!=self.value:
-                self.dev.writeSetting(self.cv.get())
+                self.dev.writeSetting(self.key,self.cv.get())
         else: raise RuntimeError("meh")
         self.update()
     def __str__(self): return "channel %s %s" % (self.chname,self.name)
@@ -144,6 +146,9 @@ class DeviceSetting(DevAccess):
             self.w.set(self.value)
             return self.w
         elif self.type==SoapySDR.ArgInfo.STRING:
+            print("creating OptionMenu for {}, number of options {}".format(self.name,len(self.values)))
+            print("options:")
+            for v in self.values: print(repr(v))
             cv=self.cv=tk.StringVar()
             cv.set(self.value)
             cv.trace("w",app.soapywrapper(self.set))
