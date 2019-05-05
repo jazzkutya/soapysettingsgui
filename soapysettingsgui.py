@@ -68,21 +68,46 @@ class DevAccess:
         return super().__getattr__(name)
 
 class ChannelSettingBase(DevAccess):
-    def __init__(self,ch,name):
+    def __init__(self,ch,name=None):
         super().__init__(ch.dev)
         self.name=name
         self.d=ch.getD()
         self.ci=ch.getCI()
         self.w=None
+        self.cv=None
         self.value=None
-    def update(self):
-        if self.w: self.w.set(self.value)
-        return self.value
     def set(self,value):
         self.value=value
     def __str__(self): return "ChannelSettingBase %s" % self.name
     def destroy(self):
         self.w=None
+        self.cv=None
+
+class Antenna(ChannelSettingBase):
+    def __init__(self,ch):
+        super().__init__(ch,"Antenna")
+        self.chname=str(ch)
+        self.values=self.dev.listAntennas(self.d,self.ci)
+        self.update()
+        print(self)
+    def update(self):
+        self.value=self.dev.getAntenna(self.d,self.ci)
+        print("setting value to ",self.value)
+        if self.cv: self.cv.set(self.value)
+        return self.value
+    def set(self,*args):
+        if self.cv.get()!=self.value:
+            self.dev.setAntenna(self.d,self.ci,self.cv.get())
+            self.update()
+    def __str__(self): return "channel %s antenna" % (self.chname)
+    def makeWidget(self,master):
+        cv=self.cv=StringVar()
+        cv.set(self.value)
+        cv.trace("w",app.soapywrapper(self.set))
+        self.w=OptionMenu(master, cv, *self.values)
+        return self.w
+    @staticmethod
+    def discover(ch): ch.antenna=Antenna(ch)
 
 class Gain(ChannelSettingBase):
     def __init__(self,ch,name):
@@ -95,7 +120,8 @@ class Gain(ChannelSettingBase):
         print(self)
     def update(self):
         self.value=self.dev.getGain(self.d,self.ci,self.name)
-        return super().update()
+        if self.w: self.w.set(self.value)
+        return self.value
     def set(self,gain):
         self.dev.setGain(self.d,self.ci,self.name,float(gain))
         self.update()
@@ -124,8 +150,10 @@ class Channel(DevAccess):
         self.info=info=dev.getChannelInfo(d,ci)
         print("channel info %s:" % self)
         print(info)
+        print('antenna list:',dev.listAntennas(d,ci))
         self.hasAgc=dev.hasGainMode(d,ci)
         Gain.discover(self)
+        Antenna.discover(self)
     def setAgc(self,on): self.dev.setGainMode(self.d,self.ci,bool(on))
     def getAgc(self): return self.dev.getGainMode(self.d,self.ci)
     def getD(self): return self.d   # direction
@@ -152,7 +180,9 @@ class MyDevice(object):
     def get_dev_by_id(dev_id):
         return MyDevice.mydevs[dev_id]
     def __getattr__(self,name):
-        return getattr(self.dev,name)
+        dev=super().__getattribute__('dev')
+        if dev: return getattr(self.dev,name)
+        raise AttributeError()
     def __new__(cls, *args, **kwargs):
         self=object.__new__(cls)
         object.__setattr__(self,'dev',SoapySDR.Device.__new__(SoapySDR.Device,*args,**kwargs))
@@ -203,7 +233,12 @@ class App:
         tf=contentframe
         objs2update=self.objs2update=[]
         for ch in self.dev.channels:
-            Label(tf,text=("Channel %s" % ch)).pack(fill=X)
+            Label(tf,text=("channel %s" % ch)).pack(fill=X)
+            for o in ch.antenna,:
+                Label(tf,text=o.name).pack(fill=X)
+                w=o.makeWidget(tf)
+                w.pack(fill=X)
+                objs2update.append(o)
             for g in ch.gains:
                 w=g.makeWidget(tf)
                 w.pack(fill=X)
@@ -212,7 +247,7 @@ class App:
         self=self
         def tick():
             self.timer=None
-            #print("tick!")
+            print("tick!")
             for o in objs2update: o.update()
             self.timer=root.after(500,self.tickcb)
         self.tickcb=self.soapywrapper(tick)
