@@ -115,13 +115,15 @@ class DeviceSetting(DevAccess):
         #print(self)
     def update(self):
         self.value=self.getter(self.key)
+        #print("{} from device: {}({})".format(self.key,type(self.value),self.value))
         if self.cv: self.cv.set(self.value)
         if self.type in (SoapySDR.ArgInfo.INT,SoapySDR.ArgInfo.FLOAT) and self.w: self.w.set(self.value)
         return self.value
     def set(self,*args):
         if self.type==SoapySDR.ArgInfo.BOOL:
             if int(self.cv.get())!=int(self.value):
-                self.dev.writeSetting(self.key,bool(self.cv.get()))
+                print("setting",self.key,"to",bool(self.cv.get()))
+                self.dev.writeSetting(self.key,"true" if bool(self.cv.get()) else "false")
         elif self.type==SoapySDR.ArgInfo.INT:
             self.dev.writeSetting(self.key,int(args[0]))
         elif self.type==SoapySDR.ArgInfo.FLOAT:
@@ -141,6 +143,7 @@ class DeviceSetting(DevAccess):
             return self.w
         elif self.type in (SoapySDR.ArgInfo.INT,SoapySDR.ArgInfo.FLOAT):
             self.w=tk.Scale(master, from_=self.vmin, to=self.vmax, command=app.soapywrapper(self.set))
+            self.w.config(orient=tk.HORIZONTAL)
             self.w.set(self.value)
             return self.w
         elif self.type==SoapySDR.ArgInfo.STRING:
@@ -391,7 +394,7 @@ class App:
         self.rcbutt.grid(row=0,sticky=tk.W)
         #Label(frame,text="STUFF").grid(column=1,row=0)
         self.qbutt=tk.Button(frame,text="X",command=frame.quit)
-        self.qbutt.grid(column=10,row=0,sticky=tk.W+tk.E)
+        self.qbutt.grid(column=10,row=0,sticky=tk.E)
         self.contentframe=tk.Frame(master)
         self.contentframe.grid(row=1,sticky=tk.N+tk.E+tk.W+tk.S)
         self.objs2update=[]
@@ -408,9 +411,9 @@ class App:
         rowcnt=1
         for o in self.dev.settings:
             frame=tk.Frame(tf)
-            tk.Label(frame,text=o.name).grid(column=0)
+            tk.Label(frame,text=o.name).grid(column=0,sticky=tk.W)
             w=o.makeWidget(frame)
-            w.grid(column=1,row=0,sticky=tk.W)
+            w.grid(column=1,row=0,sticky=tk.E)
             objs2update.append(o)
             frame.grid(column=0,row=rowcnt,sticky=tk.W+tk.E)
             rowcnt=rowcnt+1
