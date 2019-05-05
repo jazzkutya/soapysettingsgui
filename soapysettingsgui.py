@@ -282,6 +282,32 @@ class AGC(ChannelSettingBase):
         ch.agc=AGC(ch)
         if not ch.agc.valid: ch.agc=None
 
+class AutoDC(ChannelSettingBase):
+    def __init__(self,ch):
+        super().__init__(ch,"AutoDC")
+        self.chname=str(ch)
+        self.valid=self.dev.hasDCOffsetMode(self.d,self.ci)
+        if self.valid: self.update()
+    def update(self):
+        self.value=self.dev.getDCOffsetMode(self.d,self.ci)
+        if self.cv: self.cv.set(self.value)
+        return self.value
+    def set(self,*args):
+        if self.cv.get()!=self.value:
+            self.dev.setDCOffsetMode(self.d,self.ci,bool(self.cv.get()))
+            self.update()
+    def __str__(self): return "channel %s AutoDC" % (self.chname)
+    def makeWidget(self,master):
+        cv=self.cv=tk.IntVar()
+        cv.set(self.value)
+        cv.trace("w",app.soapywrapper(self.set))
+        self.w=tk.Checkbutton(master, variable=cv)
+        return self.w
+    @staticmethod
+    def discover(ch):
+        ch.autodc=AutoDC(ch)
+        if not ch.autodc.valid: ch.autodc=None
+
 class Gain(ChannelSettingBase):
     def __init__(self,ch,name):
         super().__init__(ch,name)
@@ -328,6 +354,7 @@ class Channel(DevAccess):
         Gain.discover(self)
         Antenna.discover(self)
         AGC.discover(self)
+        AutoDC.discover(self)
         Bandwidth.discover(self)
     def getD(self): return self.d   # direction
     def getDT(self): return self.dt # direction as text
@@ -421,7 +448,7 @@ class App:
         for ch in self.dev.channels:
             tk.Label(tf,text=("channel %s" % ch)).grid(column=1+chcnt,row=0)
             rowcnt=1
-            for o in ch.antenna,ch.agc,ch.bandwidth:
+            for o in ch.antenna,ch.agc,ch.autodc,ch.bandwidth:
                 if o:
                     frame=tk.Frame(tf)
                     tk.Label(frame,text=o.name).grid(column=0)
