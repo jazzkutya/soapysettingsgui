@@ -1,0 +1,2 @@
+to use writeSetting() with the proper types swig 3.0.2 or later is needed
+apt-get install swig3.0 on ubuntu14.04
