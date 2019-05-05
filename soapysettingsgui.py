@@ -412,7 +412,7 @@ class App:
             w=o.makeWidget(frame)
             w.grid(column=1,row=0,sticky=tk.W)
             objs2update.append(o)
-            frame.grid(column=1+chcnt,row=rowcnt,sticky=tk.W+tk.E)
+            frame.grid(column=0,row=rowcnt,sticky=tk.W+tk.E)
             rowcnt=rowcnt+1
         chcnt=0
         for ch in self.dev.channels:
