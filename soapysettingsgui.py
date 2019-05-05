@@ -105,8 +105,6 @@ class DeviceSetting(DevAccess):
         elif self.type==SoapySDR.ArgInfo.STRING:
             if arginfo.options:
                 self.values = list(arginfo.options)
-                print("options:")
-                for v in self.values: print(v)
                 self.getter=self.dev.readSetting
                 self.valid=True
             else: print("string without option list unsupported")
@@ -146,9 +144,6 @@ class DeviceSetting(DevAccess):
             self.w.set(self.value)
             return self.w
         elif self.type==SoapySDR.ArgInfo.STRING:
-            print("creating OptionMenu for {}, number of options {}".format(self.name,len(self.values)))
-            print("options:")
-            for v in self.values: print(repr(v))
             cv=self.cv=tk.StringVar()
             cv.set(self.value)
             cv.trace("w",app.soapywrapper(self.set))
