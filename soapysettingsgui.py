@@ -123,7 +123,7 @@ class DeviceSetting(DevAccess):
         if self.type==SoapySDR.ArgInfo.BOOL:
             if int(self.cv.get())!=int(self.value):
                 print("setting",self.key,"to",bool(self.cv.get()))
-                self.dev.writeSetting(self.key,"true" if bool(self.cv.get()) else "false")
+                self.dev.writeSetting(self.key,bool(self.cv.get()))
         elif self.type==SoapySDR.ArgInfo.INT:
             self.dev.writeSetting(self.key,int(args[0]))
         elif self.type==SoapySDR.ArgInfo.FLOAT:
