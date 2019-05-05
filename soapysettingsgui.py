@@ -27,18 +27,17 @@ import gc
 # - - RangeList getBandwidthRange()
 # - Settings API
 # - -device settings:
-# - - ArgInfoList getSettingInfo() // returns a list of argument info structures. NO direction and channel argument!
+# - - SoapySDR.ArgInfoList getSettingInfo() // returns a list of argument info structures. NO direction and channel argument!
 # - - writeSetting(string key, value)
 # - - template <typename Type> writeSetting(string key, Type &value)
 # - - string readSetting(string key)
 # - - template <typename Type> Type readSetting(string key);
 # - -channel settings: (dir and channel args)
-# - - ArgInfoList getSettingInfo()
+# - - SoapySDR.ArgInfoList getSettingInfo()
 # - - writeSetting(string key, value)
 # - - template <typename Type> writeSetting(string key, Type value)
 # - - string readSetting(string key)
 # - - template <typename Type> Type readSetting(string key)
-# - - ArgInfoList getSettingInfo() 
 # - - 
 
 # Device
@@ -68,6 +67,99 @@ class DevAccess:
     def __getattr__(self,name):
         if name=="dev": return MyDevice.get_dev_by_id(self.dev_id)
         raise AttributeError(name)
+
+class DeviceSetting(DevAccess):
+    def __init__(self,dev,arginfo):
+        super().__init__(dev)
+        self.valid=False
+        self.key=self.name=arginfo.key
+        if arginfo.name: self.name=arginfo.name
+        self.description=""
+        if arginfo.description: self.description=arginfo.description
+        #self.value=arginfo.value  # we'll use update instead to initialize value
+        self.type=arginfo.type
+        self.cv=None
+        self.w=None
+        self.value=None
+        if self.type==SoapySDR.ArgInfo.BOOL:
+            self.getter=self.dev.readSettingBool
+            self.valid=True
+        elif self.type==SoapySDR.ArgInfo.INT:
+            if arginfo.range:
+                self.vstep=1
+                self.vmin=arginfo.range.minimum()
+                self.vmax=arginfo.range.maximum()
+                if int(arginfo.range.step()): self.vstep=int(arginfo.range.step())
+                self.getter=self.dev.readSettingInt
+                self.valid=True
+            else: print("int without range unsupported")
+        elif self.type==SoapySDR.ArgInfo.FLOAT:
+            if arginfo.range:
+                self.vstep=1.0
+                self.vmin=arginfo.range.minimum()
+                self.vmax=arginfo.range.maximum()
+                if arginfo.range.step(): self.vstep=arginfo.range.step()
+                self.getter=self.dev.readSettingFloat
+                self.valid=True
+            else: print("float without range unsupported")
+        elif self.type==SoapySDR.ArgInfo.STRING:
+            if arginfo.options:
+                self.values = arginfo.options
+                self.getter=self.dev.readSetting
+                self.valid=True
+            else: print("string without option list unsupported")
+        else:
+            raise RuntimeError("Unknown SoapySDR.ArgInfo type: "+self.type)
+
+        if self.valid: self.update()
+        #print(self)
+    def update(self):
+        self.value=self.getter(self.key)
+        if self.cv: self.cv.set(self.value)
+        if self.type in (SoapySDR.ArgInfo.INT,SoapySDR.ArgInfo.FLOAT) and self.w: self.w.set(self.value)
+        return self.value
+    def set(self,*args):
+        if self.type==SoapySDR.ArgInfo.BOOL:
+            if int(self.cv.get())!=int(self.value):
+                self.dev.writeSetting(bool(self.cv.get()))
+        elif self.type==SoapySDR.ArgInfo.INT:
+            self.dev.writeSetting(self.d,self.ci,int(args[0]))
+        elif self.type==SoapySDR.ArgInfo.FLOAT:
+            self.dev.writeSetting(self.d,self.ci,float(args[0]))
+        elif self.type==SoapySDR.ArgInfo.STRING:
+            if self.cv.get()!=self.value:
+                self.dev.writeSetting(self.cv.get())
+        else: raise RuntimeError("meh")
+        self.update()
+    def __str__(self): return "channel %s %s" % (self.chname,self.name)
+    def makeWidget(self,master):
+        if self.type==SoapySDR.ArgInfo.BOOL:
+            cv=self.cv=tk.IntVar()
+            cv.set(self.value)
+            cv.trace("w",app.soapywrapper(self.set))
+            self.w=tk.Checkbutton(master, variable=cv)
+            return self.w
+        elif self.type in (SoapySDR.ArgInfo.INT,SoapySDR.ArgInfo.FLOAT):
+            self.w=tk.Scale(master, from_=self.vmin, to=self.vmax, command=app.soapywrapper(self.set))
+            self.w.set(self.value)
+            return self.w
+        elif self.type==SoapySDR.ArgInfo.STRING:
+            cv=self.cv=tk.StringVar()
+            cv.set(self.value)
+            cv.trace("w",app.soapywrapper(self.set))
+            self.w=tk.OptionMenu(master, cv, *self.values)
+            return self.w
+        else: raise RuntimeError("meh")
+    def destroy(self):
+        self.w=None
+        self.cv=None
+    @staticmethod
+    def discover(dev):
+        arginfos=dev.getSettingInfo()
+        settings=dev.settings=[]
+        for arginfo in arginfos:
+            setting=DeviceSetting(dev,arginfo)
+            if setting.valid: settings.append(setting)
 
 class ChannelSettingBase(DevAccess):
     def __init__(self,ch,name=None):
@@ -274,6 +366,7 @@ class MyDevice(object):
         self.hardwareKey=self.getHardwareKey()
     def discover(self):
         Channel.discover(self)
+        DeviceSetting.discover(self)
         print(self.channels)
     def destroy(self):
         dev_id=id(self)
@@ -312,6 +405,15 @@ class App:
         tf=contentframe
         tk.Label(tf,text="device").grid(column=0,row=0)
         objs2update=self.objs2update=[]
+        rowcnt=1
+        for o in self.dev.settings:
+            frame=tk.Frame(tf)
+            tk.Label(frame,text=o.name).grid(column=0)
+            w=o.makeWidget(frame)
+            w.grid(column=1,row=0,sticky=tk.W)
+            objs2update.append(o)
+            frame.grid(column=1+chcnt,row=rowcnt,sticky=tk.W+tk.E)
+            rowcnt=rowcnt+1
         chcnt=0
         for ch in self.dev.channels:
             tk.Label(tf,text=("channel %s" % ch)).grid(column=1+chcnt,row=0)
