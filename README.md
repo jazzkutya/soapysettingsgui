@@ -19,3 +19,7 @@ To use this simultaneously with the SDR Program(tm) you have to share the device
 Use the IP address of your machine running SoapySDRServer. If it's the same machine you could use remote=localhost, but this is the default (driver=remote,remote=localhost) so just start soapysettingsgui.py.
 
 To share the device when using linrad on linux you can also use [this](https://github.com/jazzkutya/linrad_extio_SoapySDR). It has an embedded SoapySDR exactly for this usage, avoiding network overhead for the IQ stream.
+
+## Other notes
+
+When building SoapySDR you need swig newer than 3.0 for the python bindings. Ubuntu 14.04 has swig 3.0 but the package name is called swig3.0 and by default an earlier version is installed.
