@@ -7,6 +7,7 @@ import SoapySDR
 from SoapySDR import *
 import sys
 import gc
+import argparse
 
 # things we want to set for each channel:
 # - Gain
@@ -32,7 +33,7 @@ import gc
 # - - template <typename Type> writeSetting(string key, Type &value)
 # - - string readSetting(string key)
 # - - template <typename Type> Type readSetting(string key);
-# - -channel settings: (dir and channel args)
+# - -channel settings: (dir and channel args) TODO
 # - - SoapySDR.ArgInfoList getSettingInfo()
 # - - writeSetting(string key, value)
 # - - template <typename Type> writeSetting(string key, Type value)
@@ -45,10 +46,9 @@ import gc
 #  - has channels. a channel is identified by a channel number _and_ a direction
 #    or a channel has an RX set of settings/gains/etv or a TX set of settings/gains/etc or both
 # Channel
-# - rx gains: a collection of widgets
-# - rx bandwidth: one widget
-# - rx settings: a collection of widgets, could be different type of widgets
-# - all of the above for tx
+# - gains: a collection of widgets
+# - bandwidth: one widget
+# - settings: a collection of widgets, could be different type of widgets
 
 # I removed all parent references toward MyDevice so MyDevice can be
 # garbage collected by reference counting.
@@ -413,7 +413,8 @@ class MyDevice(object):
 
 class App:
     
-    def __init__(self,master):
+    def __init__(self,master,devspec):
+        self.devspec=devspec
         self.timer=None
         frame=tk.Frame(master,borderwidth=2,relief=tk.RIDGE)
         frame.grid(sticky=tk.W+tk.E)
@@ -426,7 +427,8 @@ class App:
         self.contentframe.grid(row=1,sticky=tk.N+tk.E+tk.W+tk.S)
         self.objs2update=[]
     def buildSDRgui(self):
-        self.dev=MyDevice("driver=remote,remote=localhost")
+        #self.dev=MyDevice("driver=remote,remote=localhost")
+        self.dev=MyDevice(self.devspec)
         self.rcbutt.config(state=tk.DISABLED)
         print("driverkey:",self.dev.driverKey)
         print("hardwarekey:",self.dev.hardwareKey)
@@ -500,21 +502,21 @@ class App:
         return f
 
 
-# - Antenna TODO
+# - Antenna
 # - - name
 # - - setAntenna(name) / getAntenna() returns string
-# - Frontend corrections API TODO
+# - Frontend corrections API
 # - - bool hasDCOffsetMode()
 # - - setDCOffsetMode(bool) sets automatic or none
 # - - bool getDCOffsetMode() return current setting
 # - - bool hasDCOffset() Does the device support frontend DC offset correction
-# - - setDCOffset(complex offset)
+# - - setDCOffset(complex offset) TODO?
 # - - complex getDCOffset()
 # - - bool hasIQBalance()
-# - - setIQBalance(complex balance)
+# - - setIQBalance(complex balance) TODO?
 # - - complex getIQBalance
 # - - bool hasFrequencyCorrection()
-# - - setFrequencyCorrection(double)
+# - - setFrequencyCorrection(double) TODO. also available az a frequency element named "CORR"
 # - - double getFrequencyCorrection()
 # TODO Frequency api
 # TODO Clocking api
@@ -532,7 +534,6 @@ class App:
 #freqs = sdrdev.getFrequencyRange(SOAPY_SDR_RX, 0)
 #for freqRange in freqs: print(freqRange)
 
-
 def scalewheel(ev):
     #print("handling event type {}, x {}, y {} widget {}".format(ev.type,ev.x,ev.y,ev.widget.__class__))
     w=ev.widget
@@ -543,8 +544,11 @@ def scalewheel(ev):
         if int(ev.type)==4 and ev.num==5: d=-1
         w.set(w.get()+d)
 
+parser=argparse.ArgumentParser(description='SDR settings GUI for SoapySDR')
+parser.add_argument('devspec', nargs='?',default="driver=remote,remote=localhost",help='device selector, like you do with SoapySDRUtil --probe. Default: %(default)s')
+args = parser.parse_args()
 root = tk.Tk()
-app = App(root)
+app = App(root,args.devspec)
 app.buildSDRgui()
 #print(type(dev))
 #print("hardwarekey:",dev.getHardwareKey())
