@@ -22,4 +22,4 @@ To share the device when using linrad on linux you can also use [this](https://g
 
 ## Other notes
 
-When building SoapySDR you need swig newer than 3.0 for the python bindings. Ubuntu 14.04 has swig 3.0 but the package name is called swig3.0 and by default an earlier version is installed.
+When building SoapySDR you need swig newer than 3.0 for the python bindings. Ubuntu 14.04 has swig 3.0 but the package name is swig3.0 and by default an earlier version is installed.
