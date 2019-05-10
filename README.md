@@ -2,7 +2,7 @@
 
 # What?
 
-SDR Settings GUI for SoapySDR.
+SDR Settings GUI for SoapySDR, written in python (3.4, hopefully works with all newer pythons)
 
 # Why?
 
